@@ -1,0 +1,115 @@
+/**
+ * global.css
+ * Estilos globais do PulmoScope: importa o Tailwind, define as cores do
+ * tema, os resets básicos e o estilo do slider (classe .slider).
+ */
+
+@import "tailwindcss";
+
+/* Tema */
+/* cores do tema; o Tailwind v4 gera classes e variáveis a partir delas (ex.: var(--color-cream), bg-bg-base) */
+@theme {
+  /* paleta principal */
+  --color-dark-green: #183D09;
+  --color-olive-green: #738839;
+  --color-cream: #EFE7D4;
+  --color-teal-dark: #497372;
+  --color-soft-blue: #7BB3C4;
+
+  /* fundos, bordas e texto secundário */
+  --color-bg-base: #090a0b;
+  --color-bg-panel: #121316;
+  /* fundo do painel de métricas (coluna direita do App) */
+  --color-bg-panel-subtle: #0d0e11;
+  --color-bg-card: #1a1b20;
+  --color-border: #272930;
+  --color-text-muted: #9a9ea8;
+}
+
+/* Sistema */
+/* força controles nativos (scrollbar, inputs) no modo escuro */
+:root {
+  color-scheme: dark;
+}
+
+/* Base */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    /* a rolagem é feita dentro de cada coluna, não na página */
+    overflow: hidden;
+    background-color: var(--color-bg-base);
+    color: var(--color-cream);
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* campos de formulário herdam a fonte do restante da página */
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+/* Componentes */
+/* slider (input range) usado no limiar e na opacidade */
+@layer components {
+  /* trilho */
+  .slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    background-color: var(--color-border);
+    cursor: pointer;
+    outline: none;
+    width: 100%;
+  }
+
+  /* contorno visível ao navegar pelo teclado */
+  .slider:focus-visible {
+    outline: 2px solid var(--color-soft-blue);
+    outline-offset: 4px;
+  }
+
+  /* botão deslizante: Chrome, Edge e Safari */
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background-color: var(--color-cream);
+    border: 2px solid var(--color-olive-green);
+    transition: transform 0.15s ease;
+  }
+
+  .slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+  }
+
+  /* botão deslizante: Firefox (mesmo visual) */
+  .slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background-color: var(--color-cream);
+    border: 2px solid var(--color-olive-green);
+    transition: transform 0.15s ease;
+  }
+
+  .slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+  }
+}
