@@ -71,7 +71,7 @@ Melhorias e funcionalidades:
 ### Processamento de Imagem e Visão Computacional
 - [ ] **Refinamento da Separação Anatômica (Esquerdo vs. Direito):** Substituir a atual heurística de divisão por corte seco no eixo X ($cx < width / 2$) por uma abordagem baseada em análise estrutural do mediastino ou alinhamento anatômico, por exemplo, para garantir robustez clínica na classificação dos pulmões.
 
-### 💻 Funcionalidades de Interface e Exportação
+### Funcionalidades de Interface e Exportação
 - [ ] **Exportação de Métricas em CSV:** Implementar a lógica no painel de resultados para gerar e baixar um relatório estruturado contendo as áreas calculadas e os tempos de processamento do kernel.
 - [ ] **Download da Máscara Segmentada:** Habilitar o botão de download para permitir que o usuário salve a máscara binária resultante diretamente em formato PNG.
 - [ ] **Validação de Insumos:** Adicionar feedback visual avançado e pré-validação de dimensões para imagens de tomografia de entrada fora do padrão 512x512.
