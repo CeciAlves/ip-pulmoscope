@@ -1,0 +1,2 @@
+# dependência opcional: só para quem tem GPU NVIDIA (driver com CUDA 13)!!!
+cupy-cuda13x[ctk]
