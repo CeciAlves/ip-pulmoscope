@@ -124,20 +124,24 @@ python benchmark.py --tamanhos 512 1024 2048 4096 8192 --csv benchmark.csv
 python benchmark.py --imagens ~/LUNA16/processado/imagens
 ```
 
-Resultados de referência (RTX 3060, driver 535, medianas em ms, 100 execuções):
+Resultados de referência (RTX 3060 12 GB, driver 535, máquina sem outras cargas; medianas em ms, 100 execuções; speedup em relação ao OpenCV):
 
 | Tamanho | CPU-A OpenCV | CPU-B NumPy | GPU só kernel | Cópias H2D + D2H | GPU kernel + cópias |
 |---|---|---|---|---|---|
-| 512² | 0,007 | 0,256 | 0,006 | 0,13 | 2,25 |
-| 1024² | 0,015 | 1,20 | 0,017 | 0,38 | 2,25 |
-| 4096² | 10,8* | 32,6 | 0,224 | 4,86 | 6,84 |
-| 8192² | 35,9* | 143 | 0,887 | 24,2 | 26,3 |
+| 512² | 0,0076 | 0,257 | 0,0072 (1,0×) | 0,125 | 0,134 (0,06×) |
+| 1024² | 0,0150 | 1,18 | 0,0145 (1,0×) | 0,362 | 0,376 (0,04×) |
+| 2048² | 0,106 | 8,17 | 0,062 (1,7×) | 1,12 | 1,18 (0,09×) |
+| 4096² | 1,61 | 30,9 | 0,232 (7,0×) | 4,80 | 5,03 (0,32×) |
+| 8192² | 29,1 | 172 | 0,916 (31,8×) | 23,6 | 24,5 (1,19×) |
+
+Pipeline completo da API em 20 cortes do LUNA16 (512², mediana de 400 execuções): **CPU 2,94 ms × GPU 3,18 ms**. A limiarização é menos de 1% do tempo; o resto (componentes conectados, separação e buracos) roda na CPU nos dois motores.
 
 Leitura:
-- **Só o kernel**, a GPU empata com o OpenCV em 512² e fica dezenas de vezes mais rápida a partir de 2048² (≈ 40× em 8192²).
-- **Com as cópias**, a GPU perde em 512² e 1024²: limiarizar é uma operação trivial, e copiar a imagem custa mais do que processá-la. Só compensa nas imagens grandes, e por pouco (≈ 1,4× em 8192²), porque as cópias dominam.
-- O OpenCV é muito mais rápido que o NumPy por ser multithread e usar SIMD.
-- \* Na medição acima, a GPU e a CPU eram compartilhadas com outro processo pesado: isso infla os tempos do OpenCV nas imagens grandes e acrescenta uma latência fixa de ≈ 2 ms ao primeiro kernel após cada cópia (o kernel isolado continua em 0,006 ms). Para o relatório final, repita a medição com a máquina livre.
+- **Só o kernel**, a GPU empata com o OpenCV até 1024² e passa à frente a partir de 2048² (≈ 7× em 4096², ≈ 32× em 8192²).
+- **Com as cópias**, a GPU perde até 4096²: limiarizar é uma operação trivial (uma comparação por pixel), e copiar a imagem para a GPU e trazer a máscara de volta custa de 15 a 25 vezes mais do que processá-la. Só em 8192² ela compensa, e por pouco (1,19×).
+- No tamanho real de uma TC (512²), a GPU deixa o pipeline um pouco **mais lento**. Ela valeria a pena com imagens muito grandes, com lotes de cortes ou se mais etapas (ex.: componentes conectados) rodassem nela, evitando idas e vindas de dados.
+- O OpenCV é muito mais rápido que o NumPy por ser multithread e usar instruções SIMD.
+- Todas as máscaras são idênticas entre os motores (diferença de 0 pixel em todos os tamanhos).
 
 --- 
 
