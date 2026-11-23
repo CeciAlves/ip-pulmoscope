@@ -11,7 +11,7 @@ import type { EngineType } from '../../types/segmentation';
 // opções exibidas como botões (valor enviado ao backend, rótulo e ícone)
 const ENGINE_OPTIONS: { value: EngineType; label: string; icon: typeof Zap }[] = [
   { value: 'gpu', label: 'GPU (CUDA)', icon: Zap },
-  { value: 'cpu', label: 'CPU (C++)', icon: Cpu },
+  { value: 'cpu', label: 'CPU', icon: Cpu },
 ];
 
 // Props
@@ -19,9 +19,11 @@ interface EngineSelectorProps {
   // motor selecionado e seu setter
   engine: EngineType;
   setEngine: (value: EngineType) => void;
+  // false quando o servidor não tem GPU (null = ainda não consultado)
+  gpuAvailable: boolean | null;
 }
 
-export function EngineSelector({ engine, setEngine }: EngineSelectorProps) {
+export function EngineSelector({ engine, setEngine, gpuAvailable }: EngineSelectorProps) {
   return (
     <section className="space-y-3">
       <h2
@@ -64,6 +66,13 @@ export function EngineSelector({ engine, setEngine }: EngineSelectorProps) {
           );
         })}
       </div>
+
+      {/* sem GPU no servidor, a opção GPU cai para a CPU automaticamente */}
+      {gpuAvailable === false && (
+        <p className="text-[11px] text-amber-300">
+          GPU indisponível no servidor: o processamento será feito na CPU.
+        </p>
+      )}
     </section>
   );
 }

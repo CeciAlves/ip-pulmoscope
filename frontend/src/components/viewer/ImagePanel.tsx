@@ -2,19 +2,25 @@
  * ImagePanel.tsx
  * Painel central do visualizador. Desenha no canvas a imagem original, a
  * máscara binária ou a sobreposição (máscara colorida sobre a imagem),
- * conforme a aba ativa, e mostra o controle de opacidade no modo overlay.
+ * conforme a aba ativa. A máscara pode ser exibida preenchida ou só pelo
+ * contorno, e a opacidade é ajustável no modo overlay.
  */
 
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
 import type { LungFilterType, TabType } from '../../types/segmentation';
+import { maskPixels } from '../../utils/mask';
+import type { MaskStyle } from '../../utils/mask';
 
 // Props
 interface ImagePanelProps {
   // url blob da imagem carregada (null se não houver imagem)
   imagePreviewUrl: string | null;
-  // url da máscara retornada pelo backend
+  // url da máscara retornada pelo backend (ambos os pulmões)
   maskUrl: string | null;
+  // máscaras de cada pulmão do paciente
+  rightMaskUrl: string | null;
+  leftMaskUrl: string | null;
   // true quando já existe resultado de segmentação
   hasSegmented: boolean;
   // aba de visualização atual
@@ -24,6 +30,9 @@ interface ImagePanelProps {
   setOpacity: (value: number) => void;
   // pulmão exibido (ambos, direito ou esquerdo)
   selectedLung: LungFilterType;
+  // máscara preenchida ou só o contorno, e seu setter
+  maskStyle: MaskStyle;
+  setMaskStyle: (value: MaskStyle) => void;
   // referência do canvas, criada no App
   canvasRef: RefObject<HTMLCanvasElement>;
 }
@@ -31,14 +40,23 @@ interface ImagePanelProps {
 export function ImagePanel({
   imagePreviewUrl,
   maskUrl,
+  rightMaskUrl,
+  leftMaskUrl,
   hasSegmented,
   activeTab,
   opacity,
   setOpacity,
   selectedLung,
+  maskStyle,
+  setMaskStyle,
   canvasRef,
 }: ImagePanelProps) {
   
+  // máscara exibida conforme o filtro de pulmão; a separação direito/esquerdo
+  // vem do backend (convenção radiológica: o direito aparece à esquerda da imagem)
+  const visibleMaskUrl =
+    selectedLung === 'right' ? rightMaskUrl : selectedLung === 'left' ? leftMaskUrl : maskUrl;
+
   // Renderização
   // redesenha o canvas sempre que imagem, máscara, aba, opacidade ou pulmão mudam
   useEffect(() => {
@@ -68,11 +86,11 @@ export function ImagePanel({
       ctx.drawImage(baseImg, 0, 0);
 
       // 2. nas abas de máscara e overlay, desenha o resultado da segmentação
-      if (hasSegmented && maskUrl && activeTab !== 'original') {
+      if (hasSegmented && visibleMaskUrl && activeTab !== 'original') {
         const maskImg = new Image();
         // necessário para ler os pixels (getImageData) de uma url de outra origem
         maskImg.crossOrigin = 'anonymous';
-        maskImg.src = maskUrl;
+        maskImg.src = visibleMaskUrl;
 
         maskImg.onload = () => {
           if (cancelled) return;
@@ -87,22 +105,14 @@ export function ImagePanel({
           tempCtx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
           const imgData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
           const data = imgData.data;
-          // coluna central, usada para separar os dois pulmões
-          const midX = canvas.width / 2;
+          // pixels a pintar: a região inteira ou só a borda (modo contorno)
+          const marked = maskPixels(data, canvas.width, canvas.height, maskStyle);
 
           // percorre os pixels (4 valores por pixel: R, G, B, A)
           for (let i = 0; i < data.length; i += 4) {
-            const pixelIndex = i / 4;
-            const x = pixelIndex % canvas.width;
-            // máscara em tons de cinza: considera o canal vermelho
-            const isMaskPixel = data[i] > 128;
+            const isMaskPixel = marked[i / 4] === 1;
 
-            // filtro de pulmão (convenção radiológica: o pulmão direito do
-            // paciente aparece no lado esquerdo da imagem)
-            const hideRight = selectedLung === 'left' && x < midX;
-            const hideLeft = selectedLung === 'right' && x >= midX;
-
-            if (!isMaskPixel || hideRight || hideLeft) {
+            if (!isMaskPixel) {
               if (activeTab === 'mask') {
                 // fora da máscara: preto opaco
                 data[i] = 0;
@@ -118,6 +128,12 @@ export function ImagePanel({
               data[i] = 132;
               data[i + 1] = 204;
               data[i + 2] = 22;
+              data[i + 3] = 255;
+            } else {
+              // na aba máscara: branco (necessário no contorno, que vem do interior)
+              data[i] = 255;
+              data[i + 1] = 255;
+              data[i + 2] = 255;
               data[i + 3] = 255;
             }
           }
@@ -136,7 +152,7 @@ export function ImagePanel({
     return () => {
       cancelled = true;
     };
-  }, [imagePreviewUrl, maskUrl, hasSegmented, activeTab, opacity, selectedLung, canvasRef]);
+  }, [imagePreviewUrl, visibleMaskUrl, hasSegmented, activeTab, opacity, maskStyle, canvasRef]);
 
   return (
     <div
@@ -166,20 +182,55 @@ export function ImagePanel({
         )}
       </div>
 
-      {/* Controle de opacidade (só na aba de sobreposição, com imagem carregada) */}
-      {imagePreviewUrl && activeTab === 'overlay' && (
+      {/* Controles da máscara (abas máscara e sobreposição, após segmentar) */}
+      {imagePreviewUrl && hasSegmented && activeTab !== 'original' && (
         <div className="mt-3 flex items-center gap-4 border-t pt-3 text-xs" style={{ borderColor: 'var(--color-border)' }}>
-          <span style={{ color: 'var(--color-text-muted)' }}>Opacidade da máscara:</span>
-          <input
-            type="range"
-            aria-label="Opacidade da máscara"
-            min={0}
-            max={100}
-            value={opacity}
-            onChange={(e) => setOpacity(Number(e.target.value))}
-            className="slider flex-1"
-          />
-          <span className="font-mono">{opacity}%</span>
+          {/* preenchida × contorno */}
+          <div
+            className="flex shrink-0 overflow-hidden rounded-md border"
+            style={{ borderColor: 'var(--color-border)' }}
+            role="group"
+            aria-label="Exibição da máscara"
+          >
+            {(
+              [
+                ['filled', 'Preenchida'],
+                ['contour', 'Contorno'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={maskStyle === value}
+                onClick={() => setMaskStyle(value)}
+                className="px-2.5 py-1 transition hover:bg-white/5"
+                style={
+                  maskStyle === value
+                    ? { backgroundColor: 'var(--color-olive-green)', color: 'var(--color-cream)' }
+                    : { color: 'var(--color-text-muted)' }
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* opacidade (só na sobreposição) */}
+          {activeTab === 'overlay' && (
+            <>
+              <span style={{ color: 'var(--color-text-muted)' }}>Opacidade:</span>
+              <input
+                type="range"
+                aria-label="Opacidade da máscara"
+                min={0}
+                max={100}
+                value={opacity}
+                onChange={(e) => setOpacity(Number(e.target.value))}
+                className="slider flex-1"
+              />
+              <span className="font-mono">{opacity}%</span>
+            </>
+          )}
         </div>
       )}
     </div>

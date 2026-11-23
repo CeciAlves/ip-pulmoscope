@@ -18,9 +18,9 @@ interface PerformanceMetricsProps {
 }
 
 // Utilitários
-// formata o tempo em milissegundos com 2 casas decimais
+// formata o tempo em milissegundos (3 casas abaixo de 1 ms, onde fica o kernel da GPU)
 function formatTime(value: number): string {
-  return `${value.toFixed(2)} ms`;
+  return `${value.toFixed(value < 1 ? 3 : 2)} ms`;
 }
 
 export function PerformanceMetrics({

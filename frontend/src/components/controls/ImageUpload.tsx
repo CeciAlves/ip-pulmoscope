@@ -6,7 +6,9 @@
  */
 
 import { useRef } from 'react';
-import { CheckCircle2, FileImage, Upload, X } from 'lucide-react';
+import { CheckCircle2, Target, Upload, X } from 'lucide-react';
+import { SampleGallery } from './SampleGallery';
+import type { Sample } from './SampleGallery';
 
 // Props
 interface ImageUploadProps {
@@ -16,23 +18,35 @@ interface ImageUploadProps {
   hasImage: boolean;
   // mensagem de erro de validação ou carregamento
   errorMessage: string;
+  // aviso não bloqueante (ex.: imagem fora do padrão 512x512)
+  inputWarning: string;
   // callbacks de ação do usuário
   onImageSelected: (file: File) => void;
-  // pode ser assíncrono (carrega a imagem de exemplo)
-  onLoadSample: () => void | Promise<void>;
+  // carrega um corte da galeria de exemplos (assíncrono)
+  onLoadSample: (sample: Sample) => void | Promise<void>;
   onRemoveImage: () => void;
+  // máscara de referência opcional (para Dice e IoU)
+  groundTruthName: string | null;
+  onGroundTruthSelected: (file: File) => void;
+  onRemoveGroundTruth: () => void;
 }
 
 export function ImageUpload({
   imageName,
   hasImage,
   errorMessage,
+  inputWarning,
   onImageSelected,
   onLoadSample,
   onRemoveImage,
+  groundTruthName,
+  onGroundTruthSelected,
+  onRemoveGroundTruth,
 }: ImageUploadProps) {
   // referência do input de arquivo (oculto), acionado pelo clique na área
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // input oculto da máscara de referência
+  const groundTruthInputRef = useRef<HTMLInputElement>(null);
 
   // Handlers
   // seleção pelo explorador de arquivos
@@ -109,16 +123,8 @@ export function ImageUpload({
         />
       </div>
 
-      {/* Imagem demonstrativa */}
-      <button
-        type="button"
-        onClick={onLoadSample}
-        className="flex items-center gap-2 text-xs font-medium transition hover:opacity-80"
-        style={{ color: 'var(--color-soft-blue)' }}
-      >
-        <FileImage className="h-3.5 w-3.5" />
-        Carregar imagem demonstrativa
-      </button>
+      {/* Galeria de cortes de exemplo */}
+      <SampleGallery imageName={imageName} onSelect={onLoadSample} />
 
       {/* Cartão do arquivo carregado, com botão de remover */}
       {hasImage && (
@@ -149,8 +155,59 @@ export function ImageUpload({
         </div>
       )}
 
+      {/* Máscara de referência (opcional): habilita Dice e IoU nos resultados */}
+      {hasImage && (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => groundTruthInputRef.current?.click()}
+            className="flex items-center gap-2 text-xs font-medium transition hover:opacity-80"
+            style={{ color: 'var(--color-soft-blue)' }}
+          >
+            <Target className="h-3.5 w-3.5" />
+            {groundTruthName ? 'Trocar máscara de referência' : 'Máscara de referência (opcional)'}
+          </button>
+          <input
+            ref={groundTruthInputRef}
+            type="file"
+            accept="image/png"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onGroundTruthSelected(file);
+              event.target.value = '';
+            }}
+            className="hidden"
+          />
+          {groundTruthName && (
+            <div
+              className="flex items-center justify-between gap-2 rounded-lg border px-3 py-1.5"
+              style={{
+                backgroundColor: 'var(--color-bg-card)',
+                borderColor: 'var(--color-border)',
+              }}
+            >
+              <span className="truncate text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {groundTruthName}
+              </span>
+              <button
+                type="button"
+                onClick={onRemoveGroundTruth}
+                title="Remover máscara de referência"
+                className="shrink-0 rounded p-0.5 transition hover:bg-white/10"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Mensagem de erro */}
       {errorMessage && <p className="text-xs text-red-400">{errorMessage}</p>}
+
+      {/* Aviso sobre a imagem de entrada */}
+      {inputWarning && <p className="text-[11px] text-amber-300">{inputWarning}</p>}
     </section>
   );
 }

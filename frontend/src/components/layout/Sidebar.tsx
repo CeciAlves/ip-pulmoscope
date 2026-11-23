@@ -7,6 +7,7 @@
 
 import { Activity, RefreshCw } from 'lucide-react';
 import type { EngineType, LungFilterType } from '../../types/segmentation';
+import type { Sample } from '../controls/SampleGallery';
 
 // Controles
 import { EngineSelector } from '../controls/EngineSelector';
@@ -24,19 +25,33 @@ interface SidebarProps {
   isProcessing: boolean;
   // mensagem de erro exibida no upload
   errorMessage: string;
+  // aviso não bloqueante sobre a imagem de entrada
+  inputWarning: string;
   // limiar da segmentação e seu setter
   threshold: number;
   setThreshold: (value: number) => void;
+  // limiar automático (Otsu), limiar calculado e preenchimento de buracos
+  autoThreshold: boolean;
+  setAutoThreshold: (value: boolean) => void;
+  thresholdUsed: number | null;
+  fillHoles: boolean;
+  setFillHoles: (value: boolean) => void;
   // pulmão exibido e seu setter
   selectedLung: LungFilterType;
   setSelectedLung: (value: LungFilterType) => void;
   // motor de processamento e seu setter
   engine: EngineType;
   setEngine: (value: EngineType) => void;
+  // false quando o servidor informa que não há GPU (null = ainda não consultado)
+  gpuAvailable: boolean | null;
   // callbacks de ação do usuário
   onImageSelected: (file: File) => void;
-  onLoadSample: () => void | Promise<void>;
+  onLoadSample: (sample: Sample) => void | Promise<void>;
   onRemoveImage: () => void;
+  // máscara de referência opcional (Dice e IoU)
+  groundTruthName: string | null;
+  onGroundTruthSelected: (file: File) => void;
+  onRemoveGroundTruth: () => void;
   onRunSegmentation: () => void;
 }
 
@@ -45,15 +60,25 @@ export function Sidebar({
   hasImage,
   isProcessing,
   errorMessage,
+  inputWarning,
   threshold,
   setThreshold,
+  autoThreshold,
+  setAutoThreshold,
+  thresholdUsed,
+  fillHoles,
+  setFillHoles,
   selectedLung,
   setSelectedLung,
   engine,
   setEngine,
+  gpuAvailable,
   onImageSelected,
   onLoadSample,
   onRemoveImage,
+  groundTruthName,
+  onGroundTruthSelected,
+  onRemoveGroundTruth,
   onRunSegmentation,
 }: SidebarProps) {
   return (
@@ -70,14 +95,23 @@ export function Sidebar({
           imageName={imageName}
           hasImage={hasImage}
           errorMessage={errorMessage}
+          inputWarning={inputWarning}
           onImageSelected={onImageSelected}
           onLoadSample={onLoadSample}
           onRemoveImage={onRemoveImage}
+          groundTruthName={groundTruthName}
+          onGroundTruthSelected={onGroundTruthSelected}
+          onRemoveGroundTruth={onRemoveGroundTruth}
         />
 
         <ThresholdControl
           threshold={threshold}
           setThreshold={setThreshold}
+          autoThreshold={autoThreshold}
+          setAutoThreshold={setAutoThreshold}
+          thresholdUsed={thresholdUsed}
+          fillHoles={fillHoles}
+          setFillHoles={setFillHoles}
         />
 
         <LungSelector
@@ -85,7 +119,11 @@ export function Sidebar({
           setSelectedLung={setSelectedLung}
         />
 
-        <EngineSelector engine={engine} setEngine={setEngine} />
+        <EngineSelector
+          engine={engine}
+          setEngine={setEngine}
+          gpuAvailable={gpuAvailable}
+        />
       </div>
 
       {/* Parte inferior: botão de segmentação */}

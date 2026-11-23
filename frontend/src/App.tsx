@@ -7,7 +7,7 @@
  * Layout em 3 colunas: Sidebar (controles) | Visualizador | Painel de métricas.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Layout e painéis
 import { Header } from './components/layout/Header';
@@ -16,8 +16,12 @@ import { ResultsPanel } from './components/results/ResultsPanel';
 import { ImagePanel } from './components/viewer/ImagePanel';
 import { ViewTabs } from './components/viewer/ViewTabs';
 
+// API
+import { getCapabilitiesApi } from './services/api';
+
 // Tipos
 import type { EngineType, LungFilterType, TabType } from './types/segmentation';
+import type { MaskStyle } from './utils/mask';
 
 // Hooks (lógica de upload e de segmentação)
 import { useImageUpload } from './hooks/useImageUpload';
@@ -27,10 +31,18 @@ export default function App() {
 
   // Estado da interface | Setup
   const [activeTab, setActiveTab] = useState<TabType>('original'); 
-  const [opacity, setOpacity] = useState(45);                    
+  const [opacity, setOpacity] = useState(45);
+  // máscara exibida preenchida ou só pelo contorno
+  const [maskStyle, setMaskStyle] = useState<MaskStyle>('filled');                    
   const [threshold, setThreshold] = useState(120);           
   const [selectedLung, setSelectedLung] = useState<LungFilterType>('both'); 
   const [engine, setEngine] = useState<EngineType>('gpu');       
+  const [autoThreshold, setAutoThreshold] = useState(false);
+  const [fillHoles, setFillHoles] = useState(true);
+  // null enquanto o servidor não foi consultado
+  const [gpuAvailable, setGpuAvailable] = useState<boolean | null>(null);
+  // máscara de referência opcional (habilita Dice e IoU)
+  const [groundTruth, setGroundTruth] = useState<File | null>(null);
 
   // Referência do canvas, repassada ao ImagePanel
   const canvasRef = useRef<HTMLCanvasElement>(null!);
@@ -41,6 +53,7 @@ export default function App() {
     imagePreviewUrl,
     imageName,
     errorMessage,
+    inputWarning,
     hasImage,
     handleImageSelection,
     handleLoadSample,
@@ -54,6 +67,11 @@ export default function App() {
     hasSegmented,
     metrics,
     maskUrl,
+    rightMaskUrl,
+    leftMaskUrl,
+    engineUsed,
+    thresholdUsed,
+    warnings,
     runSegmentation,
     resetSegmentation,
   } = useSegmentation();
@@ -62,20 +80,46 @@ export default function App() {
   // remove a imagem e limpa o resultado, voltando para a aba original
   function onRemove() {
     handleRemoveImage();
+    setGroundTruth(null);
     resetSegmentation();
     setActiveTab('original');
   }
 
+  // consulta uma vez se o servidor tem GPU (o seletor avisa se não tiver)
+  useEffect(() => {
+    getCapabilitiesApi()
+      .then((caps) => setGpuAvailable(caps.gpu))
+      .catch(() => setGpuAvailable(null));
+  }, []);
+
   // dispara a segmentação; ao terminar com sucesso, abre a aba de sobreposição
   function handleRun() {
+    setErrorMessage('');
     runSegmentation(
       imagePreviewUrl,
-      threshold,
-      engine,
+      { threshold, autoThreshold, fillHoles, engine },
+      groundTruth,
       (msg) => setErrorMessage(msg), // em caso de erro
-      () => setActiveTab('overlay')  // em caso de sucesso
+      () => setActiveTab((tab) => (tab === 'original' ? 'overlay' : tab)) // em caso de sucesso
     );
   }
+
+  // depois da primeira segmentação, mudar limiar/opções re-segmenta sozinho,
+  // com debounce para não disparar uma requisição a cada passo do slider
+  useEffect(() => {
+    if (!hasSegmented) return;
+    const timer = setTimeout(() => {
+      runSegmentation(
+        imagePreviewUrl,
+        { threshold, autoThreshold, fillHoles, engine },
+        groundTruth,
+        (msg) => setErrorMessage(msg),
+        () => setErrorMessage('')
+      );
+    }, 200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threshold, autoThreshold, fillHoles, engine, groundTruth]);
 
   return (
     <div
@@ -94,27 +138,58 @@ export default function App() {
           hasImage={hasImage}
           isProcessing={isProcessing}
           errorMessage={errorMessage}
+          inputWarning={inputWarning}
           threshold={threshold}
           setThreshold={setThreshold}
+          autoThreshold={autoThreshold}
+          setAutoThreshold={setAutoThreshold}
+          thresholdUsed={thresholdUsed}
+          fillHoles={fillHoles}
+          setFillHoles={setFillHoles}
           selectedLung={selectedLung}
           setSelectedLung={setSelectedLung}
           engine={engine}
           setEngine={setEngine}
+          gpuAvailable={gpuAvailable}
           // nova imagem: descarta o resultado anterior e volta à aba original
-          onImageSelected={(file) => {
-            handleImageSelection(file);
-            resetSegmentation();
-            setActiveTab('original');
+          onImageSelected={async (file) => {
+            // só descarta o resultado anterior se a nova imagem for aceita
+            if (await handleImageSelection(file)) {
+              // a referência pertence à imagem anterior
+              setGroundTruth(null);
+              resetSegmentation();
+              setActiveTab('original');
+            }
           }}
-          // carrega a imagem de exemplo (assíncrono) e reinicia o resultado
-          onLoadSample={async () => {
-            await handleLoadSample();
+          // carrega um corte da galeria e, se houver, a máscara de referência dele
+          onLoadSample={async (sample) => {
+            if (!(await handleLoadSample(sample.imageUrl, sample.fileName))) return;
             resetSegmentation();
             setActiveTab('original');
+            let reference: File | null = null;
+            if (sample.maskUrl) {
+              try {
+                const blob = await (await fetch(sample.maskUrl)).blob();
+                reference = new File([blob], sample.maskUrl.split('/').pop()!, { type: 'image/png' });
+              } catch {
+                // sem a referência, a amostra funciona normalmente (só sem Dice/IoU)
+              }
+            }
+            setGroundTruth(reference);
           }}
           onRemoveImage={() => {
             onRemove();
           }}
+          groundTruthName={groundTruth?.name ?? null}
+          onGroundTruthSelected={(file) => {
+            if (file.type !== 'image/png') {
+              setErrorMessage('A máscara de referência deve ser um PNG.');
+              return;
+            }
+            setErrorMessage('');
+            setGroundTruth(file);
+          }}
+          onRemoveGroundTruth={() => setGroundTruth(null)}
           onRunSegmentation={handleRun}
         />
 
@@ -139,11 +214,15 @@ export default function App() {
           <ImagePanel
             imagePreviewUrl={imagePreviewUrl}
             maskUrl={maskUrl}
+            rightMaskUrl={rightMaskUrl}
+            leftMaskUrl={leftMaskUrl}
             hasSegmented={hasSegmented}
             activeTab={activeTab}
             opacity={opacity}
             setOpacity={setOpacity}
             selectedLung={selectedLung}
+            maskStyle={maskStyle}
+            setMaskStyle={setMaskStyle}
             canvasRef={canvasRef}
           />
 
@@ -166,6 +245,27 @@ export default function App() {
             metrics={metrics}
             hasSegmented={hasSegmented}
             engine={engine}
+            engineUsed={engineUsed}
+            warnings={warnings}
+            exportData={{
+              imageName,
+              imagePreviewUrl,
+              maskUrl:
+                selectedLung === 'right'
+                  ? rightMaskUrl
+                  : selectedLung === 'left'
+                    ? leftMaskUrl
+                    : maskUrl,
+              metrics,
+              selectedLung,
+              thresholdUsed,
+              autoThreshold,
+              fillHoles,
+              engineRequested: engine,
+              engineUsed,
+              opacity,
+              maskStyle,
+            }}
           />
         </div>
       </main>

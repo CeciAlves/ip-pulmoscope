@@ -29,4 +29,18 @@ export interface Metrics {
   kernelTime: number;
   // tempo de cópia de dados entre CPU e GPU
   transferTime: number;
+  // Dice e IoU contra a máscara de referência (null quando não enviada)
+  dice: number | null;
+  iou: number | null;
+}
+// opções da segmentação enviadas ao backend
+export interface SegmentationOptions {
+  // limiar manual (ignorado quando autoThreshold é true)
+  threshold: number;
+  // calcula o limiar automaticamente (Otsu)
+  autoThreshold: boolean;
+  // preenche os buracos (vasos) dentro de cada pulmão
+  fillHoles: boolean;
+  // motor solicitado
+  engine: EngineType;
 }

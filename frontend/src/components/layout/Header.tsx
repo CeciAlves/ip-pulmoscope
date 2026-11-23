@@ -54,7 +54,7 @@ export function Header() {
           borderColor: 'var(--color-border)',
         }}
       >
-        Educational prototype
+        Uso didático · sem finalidade diagnóstica
       </span>
     </header>
   );
