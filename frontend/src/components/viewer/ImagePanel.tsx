@@ -140,8 +140,9 @@ export function ImagePanel({
 
           tempCtx.putImageData(imgData, 0, 0);
 
-          // a opacidade do slider só vale no overlay
-          ctx.globalAlpha = activeTab === 'overlay' ? opacity / 100 : 1;
+          // a opacidade do slider só vale no overlay preenchido (o contorno é
+          // fino e fica sempre opaco para continuar visível)
+          ctx.globalAlpha = activeTab === 'overlay' && maskStyle === 'filled' ? opacity / 100 : 1;
           ctx.drawImage(tempCanvas, 0, 0);
           ctx.globalAlpha = 1;
         };
@@ -215,8 +216,8 @@ export function ImagePanel({
             ))}
           </div>
 
-          {/* opacidade (só na sobreposição) */}
-          {activeTab === 'overlay' && (
+          {/* opacidade (só na sobreposição preenchida) */}
+          {activeTab === 'overlay' && maskStyle === 'filled' && (
             <>
               <span style={{ color: 'var(--color-text-muted)' }}>Opacidade:</span>
               <input

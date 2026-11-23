@@ -127,7 +127,8 @@ async function buildOverlayPng(imageUrl: string, maskUrl: string, opacity: numbe
   }
   layerCtx.putImageData(pixels, 0, 0);
 
-  ctx.globalAlpha = opacity / 100;
+  // contorno sempre opaco, como na tela
+  ctx.globalAlpha = style === 'contour' ? 1 : opacity / 100;
   ctx.drawImage(layer, 0, 0);
   ctx.globalAlpha = 1;
   return canvas.toDataURL('image/png');

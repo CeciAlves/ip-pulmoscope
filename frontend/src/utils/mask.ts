@@ -7,9 +7,10 @@
 // modo de exibição da máscara
 export type MaskStyle = 'filled' | 'contour';
 
-// espessura do contorno: 1 px em 512×512, proporcional em imagens maiores
+// espessura do contorno: 2 px em 512×512 (1 px some quando a imagem é reduzida
+// para caber na tela), proporcional em imagens maiores
 export function contourThickness(width: number): number {
-  return Math.max(1, Math.round(width / 512));
+  return Math.max(2, Math.round(width / 256));
 }
 
 /**
