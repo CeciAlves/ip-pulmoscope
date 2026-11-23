@@ -163,8 +163,10 @@ export function ImagePanel({
         borderColor: 'var(--color-border)',
       }}
     >
-      {/* Área da imagem (canvas); border-border e bg-bg-base vêm das cores do tema (global.css) */}
-      <div className="relative flex h-120 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-bg-base">
+      {/* Área da imagem (canvas); border-border e bg-bg-base vêm das cores do tema (global.css).
+          A altura acompanha a janela (descontando cabeçalho, título e controles),
+          para o painel caber inteiro em telas baixas */}
+      <div className="relative flex h-[clamp(16rem,calc(100vh-16rem),48rem)] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-bg-base">
         {!imagePreviewUrl ? (
           // estado vazio
           <div className="text-center">
@@ -178,7 +180,7 @@ export function ImagePanel({
         ) : (
           <div className="relative flex h-full w-full items-center justify-center">
             {/* o mesmo canvas exibe as 3 abas (original, máscara e overlay) */}
-            <canvas ref={canvasRef} className="max-h-full max-w-full object-contain" />
+            <canvas ref={canvasRef} className="h-full w-full object-contain" />
           </div>
         )}
       </div>

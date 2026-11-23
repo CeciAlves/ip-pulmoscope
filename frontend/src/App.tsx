@@ -193,80 +193,85 @@ export default function App() {
           onRunSegmentation={handleRun}
         />
 
-        {/* Coluna 2: visualizador da imagem */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold">Visualização da Imagem</h2>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Análise e visualização da segmentação pulmonar
-              </p>
+        {/* Colunas 2 e 3. Em telas largas (xl, 1280 px) ficam lado a lado, cada uma
+            com rolagem própria; em telas estreitas ou com zoom, as métricas descem
+            para baixo do visualizador e a área inteira rola junta */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
+          {/* Coluna 2: visualizador da imagem */}
+          <div className="flex min-w-0 flex-col p-6 space-y-4 xl:flex-1 xl:overflow-y-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold">Visualização da Imagem</h2>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Análise e visualização da segmentação pulmonar
+                </p>
+              </div>
+
+              {/* alterna entre as visões (original, sobreposição etc.) */}
+              <ViewTabs
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                hasSegmented={hasSegmented}
+              />
             </div>
 
-            {/* alterna entre as visões (original, sobreposição etc.) */}
-            <ViewTabs
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
+            <ImagePanel
+              imagePreviewUrl={imagePreviewUrl}
+              maskUrl={maskUrl}
+              rightMaskUrl={rightMaskUrl}
+              leftMaskUrl={leftMaskUrl}
               hasSegmented={hasSegmented}
+              activeTab={activeTab}
+              opacity={opacity}
+              setOpacity={setOpacity}
+              selectedLung={selectedLung}
+              maskStyle={maskStyle}
+              setMaskStyle={setMaskStyle}
+              canvasRef={canvasRef}
             />
-          </div>
 
-          <ImagePanel
-            imagePreviewUrl={imagePreviewUrl}
-            maskUrl={maskUrl}
-            rightMaskUrl={rightMaskUrl}
-            leftMaskUrl={leftMaskUrl}
-            hasSegmented={hasSegmented}
-            activeTab={activeTab}
-            opacity={opacity}
-            setOpacity={setOpacity}
-            selectedLung={selectedLung}
-            maskStyle={maskStyle}
-            setMaskStyle={setMaskStyle}
-            canvasRef={canvasRef}
-          />
-
-          {/* Aviso: o projeto é acadêmico e não serve para diagnóstico */}
-          <p className="pb-2 text-center text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-            PulmoScope é um protótipo educacional para estudo de processamento de imagens médicas. Não possui finalidade diagnóstica.
-          </p>
-        </div>
-
-        {/* Coluna 3: métricas e exportação dos resultados */}
-        <div className="w-95 shrink-0 overflow-y-auto border-l p-6 space-y-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-panel-subtle, #0d0e11)' }}>
-          <div>
-            <h2 className="text-base font-semibold">Métricas e Exportação</h2>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Resultados detalhados da segmentação
+            {/* Aviso: o projeto é acadêmico e não serve para diagnóstico */}
+            <p className="pb-2 text-center text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+              PulmoScope é um protótipo educacional para estudo de processamento de imagens médicas. Não possui finalidade diagnóstica.
             </p>
           </div>
 
-          <ResultsPanel
-            metrics={metrics}
-            hasSegmented={hasSegmented}
-            engine={engine}
-            engineUsed={engineUsed}
-            warnings={warnings}
-            exportData={{
-              imageName,
-              imagePreviewUrl,
-              maskUrl:
-                selectedLung === 'right'
-                  ? rightMaskUrl
-                  : selectedLung === 'left'
-                    ? leftMaskUrl
-                    : maskUrl,
-              metrics,
-              selectedLung,
-              thresholdUsed,
-              autoThreshold,
-              fillHoles,
-              engineRequested: engine,
-              engineUsed,
-              opacity,
-              maskStyle,
-            }}
-          />
+          {/* Coluna 3: métricas e exportação dos resultados */}
+          <div className="w-full shrink-0 border-t p-6 space-y-4 xl:w-80 2xl:w-95 xl:overflow-y-auto xl:border-t-0 xl:border-l" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-panel-subtle, #0d0e11)' }}>
+            <div>
+              <h2 className="text-base font-semibold">Métricas e Exportação</h2>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Resultados detalhados da segmentação
+              </p>
+            </div>
+
+            <ResultsPanel
+              metrics={metrics}
+              hasSegmented={hasSegmented}
+              engine={engine}
+              engineUsed={engineUsed}
+              warnings={warnings}
+              exportData={{
+                imageName,
+                imagePreviewUrl,
+                maskUrl:
+                  selectedLung === 'right'
+                    ? rightMaskUrl
+                    : selectedLung === 'left'
+                      ? leftMaskUrl
+                      : maskUrl,
+                metrics,
+                selectedLung,
+                thresholdUsed,
+                autoThreshold,
+                fillHoles,
+                engineRequested: engine,
+                engineUsed,
+                opacity,
+                maskStyle,
+              }}
+            />
+          </div>
         </div>
       </main>
     </div>

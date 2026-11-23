@@ -30,7 +30,7 @@ export function ViewTabs({
 }: ViewTabsProps) {
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg border p-1"
+      className="flex shrink-0 items-center gap-1.5 rounded-lg border p-1"
       style={{
         backgroundColor: 'var(--color-bg-panel)',
         borderColor: 'var(--color-border)',
@@ -48,7 +48,7 @@ export function ViewTabs({
             aria-pressed={isActive}
             disabled={isDisabled}
             onClick={() => setActiveTab(tab.id)}
-            className="rounded-md px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+            className="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
             style={{
               backgroundColor: isActive
                 ? 'var(--color-olive-green)'

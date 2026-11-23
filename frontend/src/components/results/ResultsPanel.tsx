@@ -36,7 +36,7 @@ export function ResultsPanel({
   exportData,
 }: ResultsPanelProps) {
   return (
-    <section className="grid grid-cols-1 gap-4">
+    <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-1">
       <AreaMetrics metrics={metrics} hasSegmented={hasSegmented} />
       <PerformanceMetrics
         metrics={metrics}
