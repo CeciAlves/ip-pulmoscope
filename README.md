@@ -2,106 +2,149 @@
 
 > **Aviso:** ferramenta didática de segmentação. Não possui finalidade diagnóstica e não deve ser usada para decisões clínicas.
 
-Protótipo educacional para processamento, segmentação e visualização de imagens médicas (cortes axiais de Tomografia Computadorizada), desenvolvido para fins acadêmicos. O sistema conta com uma interface modular em React, um backend em FastAPI (Python) integrado com OpenCV, e suporte a aceleração por hardware (CUDA).
+Protótipo educacional para processamento, segmentação e visualização de imagens médicas (cortes axiais de Tomografia Computadorizada), desenvolvido para fins acadêmicos (Projeto 19 — Segmentação de Pulmões em Tomografia Computadorizada). Interface modular em React, backend em FastAPI com OpenCV e aceleração opcional por GPU (kernel CUDA próprio).
+
+| Camada | Tecnologias |
+|---|---|
+| Frontend | React, Vite, Tailwind CSS v4, Lucide Icons |
+| Backend | Python, FastAPI, OpenCV, NumPy |
+| GPU (opcional) | CuPy (`RawKernel`), kernel em CUDA C |
 
 ---
 
-## Como Executar o Projeto
-
-Para rodar a aplicação localmente, você precisará iniciar o **Backend** e o **Frontend** em dois terminais separados.
+## Como executar
 
 ### Pré-requisitos
-* Python 3.10 ou superior instalado.
-* Node.js 20 ou superior e npm instalados (o Tailwind v4 não funciona no Node 18).
-* (Opcional) GPU NVIDIA com driver recente, para o motor GPU.
 
----
+- Git
+- Python 3.10 ou superior
+- Node.js 20 ou superior e npm (o Tailwind v4 não funciona no Node 18)
+- *(Opcional)* GPU NVIDIA com driver recente, para o motor GPU. No Windows, use o WSL2: o driver fica no Windows e o `nvidia-smi` deve funcionar dentro do WSL.
 
-### 1. Configurando e Rodando o Backend (FastAPI)
+### 1. Clonar o repositório
 
-Abra um terminal na pasta `backend/`:
+```bash
+git clone <url-do-repositório>
+cd projeto-final-integradores-iv
+```
+
+### 2. Backend (FastAPI)
+
+Em um terminal, a partir da raiz do projeto:
 
 ```bash
 cd backend
 
-# 1. Crie o ambiente virtual do Python
+# ambiente virtual
 python3 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
 
-# 2. Ative o ambiente virtual (Linux/macOS)
-source venv/bin/activate
-
-# 3. Instale as dependências
+# dependências
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# (opcional) suporte à GPU: kernel CUDA compilado em tempo de execução pelo CuPy.
-# Use o pacote compatível com o seu driver (cupy-cuda13x ou cupy-cuda12x).
-pip install -r requirements-gpu.txt
-
-# 4. Inicie o servidor FastAPI
+# servidor (http://localhost:8000; documentação interativa em /docs)
 PYTHONPATH=. uvicorn main:app --reload --port 8000
 ```
 
-O servidor estará rodando em `http://localhost:8000`. Você pode acessar a documentação interativa da API em `http://localhost:8000/docs`.
+No Windows (PowerShell), defina o `PYTHONPATH` antes: `$env:PYTHONPATH="."; uvicorn main:app --reload --port 8000`.
 
----
+### 3. Frontend (React + Vite)
 
-### 2. Configurando e Rodando o Frontend (React + Vite)
-
-Abra **outro terminal** na pasta `frontend/`:
+Em **outro terminal**, a partir da raiz do projeto:
 
 ```bash
 cd frontend
-
-# 1. Instale as dependências
 npm install
-
-# 2. Inicie o servidor de desenvolvimento
-npm run dev
+npm run dev                       # http://localhost:5173
 ```
 
-O frontend abrirá no navegador (geralmente em `http://localhost:5173`).
+O frontend espera a API em `http://localhost:8000`.
 
----
-
-## Tecnologias Utilizadas
-* **Frontend:** React, Tailwind CSS v4, Lucide Icons, Vite.
-* **Backend:** Python, FastAPI, OpenCV, NumPy.
-* **Processamento:** Limiarização com kernel próprio em CUDA C (via `cupy.RawKernel`) ou `cv2.threshold` (OpenCV) na CPU, componentes conectados (`connectedComponentsWithStats`) para isolamento pulmonar, limiar automático por Otsu e preenchimento de buracos.
-
-## Pipeline de Segmentação
-
-1. Leitura da imagem em tons de cinza com OpenCV.
-2. Limiarização invertida (`pixel < T → 255`): na GPU, um thread CUDA por pixel (blocos 16×16), com tempos de cópia (H2D/D2H) e de kernel medidos por eventos CUDA. Sem GPU, cai automaticamente para a CPU.
-3. Componentes conectados (vizinhança 8); descarte dos que tocam a borda (ar fora do corpo) e dos menores que a área mínima.
-4. Seleção dos dois maiores componentes internos (os pulmões).
-5. Separação direito × esquerdo: com dois pulmões, o de centróide mais à esquerda na imagem é o **direito do paciente** (convenção radiológica); com um só, a comparação é feita com o centro do corpo, não com o centro da imagem.
-6. Preenchimento de buracos (vasos) em cada pulmão e cálculo da área em pixels.
-7. (Opcional) Se uma máscara de referência for enviada (PNG do mesmo tamanho), calcula **Dice** e **IoU** da máscara dos dois pulmões contra ela.
-
-## Dados (LUNA16) e Avaliação
-
-O LUNA16 distribui volumes 3D (`.mhd`/`.raw`, em HU), e a aplicação trabalha com cortes 8 bits. A conversão é feita uma vez, fora da aplicação, pelo script `backend/luna16.py` (requer `pip install SimpleITK`):
+### 4. Suporte à GPU (opcional)
 
 ```bash
 cd backend
-# converte os volumes em cortes PNG (janela de -1000 a 400 HU) + máscaras de referência
-# (rótulos 3 e 4 do seg-lungs-LUNA16). Extrai ápice, região média e base de cada volume
-# e, com annotations.csv, também os cortes que passam pelos nódulos.
-python luna16.py preparar --volumes ~/LUNA16/subset0 \
-    --mascaras ~/LUNA16/seg-lungs-LUNA16 --anotacoes ~/LUNA16/annotations.csv \
-    --saida ~/LUNA16/processado --limite 10
-
-# segmenta todos os cortes preparados e calcula Dice e IoU (média, desvio e mínimo)
-python luna16.py avaliar --dados ~/LUNA16/processado --motor gpu --csv avaliacao.csv
-
-# procura o limiar de maior Dice médio (escolhido em metade dos volumes, medido na outra)
-python luna16.py buscar --dados ~/LUNA16/processado --de 60 --ate 180 --passo 5
+source venv/bin/activate
+pip install -r requirements-gpu.txt
 ```
 
-A interface já traz uma **galeria de cortes de exemplo** (`frontend/public/amostras/`): ápice, meio, base e um corte com nódulo de um mesmo volume do LUNA16, além de dois casos em que o método falha (gás do estômago confundido com pulmão e ar sob a mesa do tomógrafo). Todos vêm com a máscara de referência, então Dice e IoU aparecem logo após a segmentação. Os cortes são do [LUNA16](https://luna16.grand-challenge.org/) (licença CC BY 4.0), derivado do LIDC-IDRI.
+O arquivo instala o CuPy (`cupy-cuda13x`); use `cupy-cuda12x` se o seu driver for CUDA 12. Sem o CuPy ou sem placa NVIDIA, o sistema **continua funcionando**: ao escolher "GPU", a limiarização cai para a CPU e a resposta informa o motor realmente usado.
 
-A saída tem `imagens/` e `mascaras/` com o mesmo nome de arquivo. Na interface, carregue um corte e, em seguida, a máscara correspondente em **Máscara de referência** para ver Dice e IoU daquele corte.
+### Solução de problemas
+
+- **`python: command not found` ou pacotes ausentes:** o ambiente virtual não está ativado (o prompt deve mostrar `(venv)`). No Linux, o comando é `python3` fora do venv.
+- **"Erro ao comunicar com o backend":** confirme que o servidor está rodando na porta 8000.
+- **GPU indisponível:** verifique `nvidia-smi` e o pacote do CuPy. A aplicação segue na CPU, com um aviso.
+
+---
+
+## Pipeline de segmentação
+
+O sistema transforma a imagem em uma máscara dos pulmões em oito etapas.
+
+1. **Leitura da imagem.** A imagem é aberta em tons de cinza com o OpenCV, de modo que cada pixel passa a ter um único valor, de 0 (preto) a 255 (branco).
+2. **Limiarização.** Em seguida, define-se um valor de corte, o *limiar*, e todo pixel mais escuro que ele é marcado, já que o ar dos pulmões aparece escuro na tomografia. Esta é a etapa que roda na GPU (um thread CUDA por pixel) ou na CPU, e o limiar pode ser escolhido pelo usuário ou calculado automaticamente (método de Otsu).
+3. **Identificação do corpo.** Como o ar que fica fora do paciente também é escuro, é preciso saber onde o corpo está. Para isso, pega-se tudo o que *não* é escuro (o tecido) e apagam-se as estruturas finas, como a mesa do tomógrafo (operação chamada de abertura morfológica). Depois, fica-se com a maior região restante e preenchem-se os seus buracos. O resultado é a silhueta do corpo, com os pulmões dentro dela.
+4. **Separação das regiões escuras.** Os pixels escuros vizinhos são agrupados em regiões (componentes conectados), cada uma com sua área e o seu centro.
+5. **Escolha das regiões que são pulmão.** Só ficam as regiões que estão quase inteiramente dentro do corpo, que não são pequenas demais (nem em área absoluta, nem em relação à maior região) e que não estão no terço da frente do corpo, onde fica o gás do estômago e do intestino. Por isso, a quantidade de regiões que sobra varia de corte para corte.
+6. **Pulmão direito ou esquerdo.** Traça-se uma linha vertical no meio do corpo, e cada região é atribuída ao lado em que fica o seu centro. As regiões do mesmo lado são somadas. Pela convenção das imagens médicas, o lado esquerdo da imagem mostra o pulmão *direito* do paciente. Se uma região estiver muito perto da linha, a interface avisa que o lado pode estar trocado.
+7. **Preenchimento de buracos.** Vasos e nódulos aparecem claros dentro do pulmão e deixariam furos na máscara, por isso os buracos de cada pulmão são preenchidos. Só então os pixels de cada lado são contados, o que dá a área.
+8. **Comparação com uma referência (opcional).** Se o usuário enviar uma máscara desenhada por um especialista, o sistema mede o quanto ela coincide com a obtida, usando o Dice e o IoU (1 significa máscaras idênticas, e 0, nenhuma sobreposição).
+
+Os parâmetros (áreas mínimas, frações, tamanho da abertura) são constantes nomeadas no topo de `backend/src/services/segmentation_service.py`.
+
+---
+
+## Decisões de projeto
+
+| Decisão | Motivo |
+|---|---|
+| Só a **limiarização** roda na GPU | É a etapa naturalmente paralela (um pixel, um thread). Os componentes conectados e os filtros ficam no OpenCV, na CPU. |
+| Kernel **CUDA C compilado em execução** (CuPy `RawKernel`) | Mantém o kernel próprio em CUDA C sem exigir uma toolchain C++ separada nem compilação prévia. O código que o lança é Python. |
+| **Fallback automático para a CPU** | Quem não tem GPU roda o projeto sem instalar nada extra, e a resposta informa o motor realmente usado. |
+| **Aceitar só regiões dentro do corpo**, em vez de descartar as que tocam a borda da imagem | A primeira versão descartava o ar encostado nas bordas, por ser o ar de fora do paciente. Mas a mesa do tomógrafo forma uma "concha" que prende ar sem encostar em borda alguma, e esse ar era confundido com pulmão. Agora o corpo é identificado primeiro, e só o que está dentro dele é aceito. |
+| **Manter todas as regiões relevantes**, em vez de apenas as duas maiores | A primeira versão sempre ficava com as duas maiores regiões escuras, supondo um pulmão por região. Em cortes de ápice ou de base, porém, um pulmão pode aparecer em pedaços, ou só um lado pode aparecer. Agora ficam todas as regiões com pelo menos 10% do tamanho da maior, e o resultado pode ter qualquer quantidade de regiões. |
+| **Descartar regiões na frente do corpo** | O gás do estômago e do intestino é escuro como o pulmão e fica dentro do corpo, mas na frente do abdômen. Nas amostras, a posição foi o único critério que o separou do pulmão (o tamanho e a textura se sobrepunham). |
+| Incluir **vasos e nódulos**, excluir vias aéreas grandes | A máscara delimita onde procurar nódulos; excluí-los os esconderia. |
+
+---
+
+## Atendimento à proposta
+
+### Requisitos mínimos
+
+| Requisito | Situação |
+|---|---|
+| Kernel de limiarização em CUDA C/C++ | **Atendido.** O kernel `threshold_inv` é escrito em CUDA C. O código que o lança e faz as cópias de memória é Python (CuPy). |
+| Selecionar componentes conectados internos e gerar a máscara binária | **Atendido**, com mudança de critério (ver abaixo). |
+| Testar diferentes cortes, calcular a área e comparar CPU × GPU | **Atendido.** Galeria com 6 cortes, área em pixels e o script `backend/benchmark.py` para o comparativo. |
+
+### O que mudou em relação à proposta
+
+- **Descarte por borda → pertencer ao corpo.** A proposta descartava as regiões escuras que tocam as bordas da imagem, pois, na maioria dos cortes, só o ar de fora do paciente encosta nelas. Mas em alguns cortes a mesa do tomógrafo se curva e encerra uma bolsa de ar que *não* encosta na borda. Essa bolsa passava pelo filtro, e, por ser grande, era escolhida no lugar de um pulmão menor. O critério passou a ser outro: primeiro se identifica o corpo (apagando a mesa), e só se aceitam regiões que estejam dentro dele. O ar sob a mesa fica fora do corpo e é descartado, esteja ou não encostado na borda.
+- **Quantidade de regiões:** passou a depender do tamanho relativo de cada uma, e não de um número fixo.
+- **Extras além do pedido:** limiar automático (Otsu), preenchimento de buracos, Dice/IoU, exibição por contorno, exportação (PNG e CSV), galeria de amostras, testes e benchmark.
+
+---
+
+## Resultados da segmentação
+
+A galeria de exemplos da interface (`frontend/public/amostras/`) traz cortes do LUNA16 com a máscara de referência, e Dice e IoU aparecem logo após a segmentação. Dois dos cortes (gás do estômago e ar sob a mesa) são justamente os casos que motivaram os filtros do método.
+
+| Amostra | Regra original (2 maiores, borda) | Regra atual |
+|---|---|---|
+| Ápice | 0,996 | 0,996 |
+| Meio | 0,997 | 0,997 |
+| Nódulo | 0,998 | 0,998 |
+| Base | 0,977 | 0,977 |
+| Falha: gás | 0,598 | 0,962 |
+| Falha: mesa | 0,539 | 0,998 |
+| **Média (Dice)** | **0,851** | **0,988** |
+
+> São seis cortes, e o filtro de posição foi calibrado neles. Os resultados indicam o comportamento do método, mas não provam que ele generaliza para outros pacientes.
+
+---
 
 ## Testes
 
@@ -113,55 +156,34 @@ pip install pytest httpx
 python -m pytest tests -v
 ```
 
-## Benchmark CPU × GPU
-
-O script `backend/benchmark.py` compara três implementações da limiarização: **CPU-A** `cv2.threshold` (OpenCV, motor de CPU da API), **CPU-B** NumPy (vetorizado, sem OpenCV) e **GPU** (o kernel CUDA da API). Cenários: (1) só o kernel, sem cópias, medido por eventos CUDA; (2) kernel com cópias H2D + D2H; (3) pipeline completo da API, por parte; (4) escalabilidade com a imagem redimensionada. Descarta o aquecimento, executa N vezes (padrão 100) e reporta média, desvio, mínimo, mediana e speedup em relação ao OpenCV, além da diferença de pixels entre as máscaras (sempre 0).
+Para repetir o comparativo de desempenho CPU × GPU:
 
 ```bash
 cd backend
 python benchmark.py --tamanhos 512 1024 2048 4096 8192 --csv benchmark.csv
-# cenário 3 com cortes reais (até 20 PNGs da pasta)
-python benchmark.py --imagens ~/LUNA16/processado/imagens
 ```
 
-Resultados de referência (RTX 3060 12 GB, driver 535, máquina sem outras cargas; medianas em ms, 100 execuções; speedup em relação ao OpenCV):
+---
 
-| Tamanho | CPU-A OpenCV | CPU-B NumPy | GPU só kernel | Cópias H2D + D2H | GPU kernel + cópias |
-|---|---|---|---|---|---|
-| 512² | 0,0076 | 0,257 | 0,0072 (1,0×) | 0,125 | 0,134 (0,06×) |
-| 1024² | 0,0150 | 1,18 | 0,0145 (1,0×) | 0,362 | 0,376 (0,04×) |
-| 2048² | 0,106 | 8,17 | 0,062 (1,7×) | 1,12 | 1,18 (0,09×) |
-| 4096² | 1,61 | 30,9 | 0,232 (7,0×) | 4,80 | 5,03 (0,32×) |
-| 8192² | 29,1 | 172 | 0,916 (31,8×) | 23,6 | 24,5 (1,19×) |
+## Limitações conhecidas
 
-Pipeline completo da API em 20 cortes do LUNA16 (512², mediana de 400 execuções): **CPU 2,94 ms × GPU 3,18 ms**. A limiarização é menos de 1% do tempo; o resto (componentes conectados, separação e buracos) roda na CPU nos dois motores.
+- **Pulmões fundidos:** quando os dois formam um único componente, são tratados como uma região só.
+- **Orientação:** o filtro de posição assume a imagem na orientação padrão (paciente de barriga para cima, frente no topo). Uma imagem espelhada ou rotacionada o quebra.
+- **Validação pequena:** seis cortes de um mesmo volume; os parâmetros foram ajustados neles.
+- **Áreas em pixels**, não em mm²: não são comparáveis entre cortes de resoluções diferentes (a interface avisa quando a imagem foge de 512×512).
+- **Latência da GPU após repouso:** depois de cerca de 20 s sem uso, a primeira requisição na GPU pode levar centenas de ms a mais (a placa sai de um estado de baixo consumo). O painel de desempenho mostra só o kernel e a cópia, sem esse custo.
+- **URL da API fixa** em `http://localhost:8000` no frontend (`frontend/src/services/api.ts`).
 
-Leitura:
-- **Só o kernel**, a GPU empata com o OpenCV até 1024² e passa à frente a partir de 2048² (≈ 7× em 4096², ≈ 32× em 8192²).
-- **Com as cópias**, a GPU perde até 4096²: limiarizar é uma operação trivial (uma comparação por pixel), e copiar a imagem para a GPU e trazer a máscara de volta custa de 15 a 25 vezes mais do que processá-la. Só em 8192² ela compensa, e por pouco (1,19×).
-- No tamanho real de uma TC (512²), a GPU deixa o pipeline um pouco **mais lento**. Ela valeria a pena com imagens muito grandes, com lotes de cortes ou se mais etapas (ex.: componentes conectados) rodassem nela, evitando idas e vindas de dados.
-- O OpenCV é muito mais rápido que o NumPy por ser multithread e usar instruções SIMD.
-- Todas as máscaras são idênticas entre os motores (diferença de 0 pixel em todos os tamanhos).
+---
 
---- 
+## Conclusão
 
-## Próximos Passos (To-Do)
+O PulmoScope cumpre o objetivo da proposta: carrega cortes de TC, limiariza a imagem com um kernel CUDA, seleciona as regiões internas ao corpo que correspondem aos pulmões e apresenta a máscara, a sobreposição sobre a imagem original e a área segmentada em pixels. A parte mais delicada do trabalho não foi a limiarização, e sim decidir quais regiões escuras são de fato pulmão. A regra inicial, que descartava o que toca a borda e ficava com as duas maiores regiões, falhava justamente nos cortes em que a mesa do tomógrafo ou o gás do abdômen formavam regiões escuras grandes e internas. Ao trocá-la por critérios baseados no corpo, no tamanho relativo e na posição, o Dice médio nas seis amostras subiu de 0,85 para 0,99, embora essa validação seja pequena e os parâmetros tenham sido ajustados nas próprias amostras.
 
-Melhorias e funcionalidades:
+Na comparação entre CPU e GPU, o resultado foi menos favorável à GPU do que se poderia esperar, e isso é um aprendizado do trabalho. A limiarização é uma operação tão simples, uma comparação por pixel, que o OpenCV na CPU já a executa em frações de milissegundo. O kernel só passa à frente em imagens grandes (cerca de 7 vezes mais rápido em 4096×4096 e 32 vezes em 8192×8192, em medições feitas em uma RTX 3060 sem contar as cópias de memória), e o custo de levar a imagem à placa e trazer a máscara de volta anula esse ganho até tamanhos muito grandes. Em um corte real de 512×512, portanto, a GPU não traz vantagem. Ela só compensaria com imagens maiores, com vários cortes processados em conjunto ou com mais etapas do pipeline rodando nela, de modo a evitar essas idas e vindas de dados. Por isso, a GPU permanece como uma alternativa opcional, com retorno automático para a CPU quando não está disponível.
 
-### Processamento de Imagem e Visão Computacional
-- [x] **Refinamento da Separação Anatômica (Esquerdo vs. Direito):** a divisão por corte seco no eixo X foi substituída pela classificação por componente (centróides relativos entre si e ao centro do corpo), e o backend devolve uma máscara por pulmão.
-- [x] **Limiar automático (Otsu)** e **preenchimento de buracos**, configuráveis na interface.
-- [x] **Preparação do LUNA16:** volumes `.mhd` convertidos em cortes PNG com máscaras de referência.
-- [x] **Métricas Dice e IoU** contra a máscara de referência, na interface e em lote (`luna16.py avaliar`).
-- [x] **Galeria de amostras** do LUNA16 com máscaras de referência, incluindo casos de falha.
-- [x] **Benchmark CPU × GPU** (`backend/benchmark.py`), com escalabilidade e verificação de pixels.
-- [x] **Testes da API** (`backend/tests`): 25 casos cobrindo contrato, convenção radiológica, buracos, Otsu, Dice/IoU, erros 400/422 e GPU × CPU.
-- [ ] **Separação de pulmões fundidos:** quando os dois pulmões formam um único componente, ainda são tratados como uma região só.
+Por fim, o sistema é uma ferramenta didática: não foi validado clinicamente e não deve ser usado para diagnóstico.
 
-### Funcionalidades de Interface e Exportação
-- [x] **Exportação de Métricas em CSV:** áreas, limiar, motor usado e tempos de processamento.
-- [x] **Download da Máscara Segmentada e da Sobreposição** em PNG (respeitando o filtro de pulmão e o modo de exibição).
-- [x] **Exibição por contorno:** a máscara pode ser vista preenchida ou só pela borda (contorno interno, sem deslocar a fronteira do pulmão), na tela e nos downloads.
-- [x] **Validação de Insumos:** pré-validação de formato, tamanho e dimensões no frontend, com aviso para imagens fora do padrão 512×512; o backend repete a validação.
-- [x] **Re-segmentação automática** ao ajustar o limiar (com debounce).
+---
+
+Dados de exemplo: [LUNA16](https://luna16.grand-challenge.org/) (CC BY 4.0), derivado do LIDC-IDRI.
