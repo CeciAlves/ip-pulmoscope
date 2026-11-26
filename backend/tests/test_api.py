@@ -113,7 +113,7 @@ def test_um_pulmao_so_usa_o_centro_do_corpo(right, left, lado):
     m = body["metrics"]
     assert m[lado] > 0
     assert m["totalArea"] == m[lado]
-    assert any("Apenas uma" in w for w in body["warnings"])
+    assert any("Apenas um lado" in w for w in body["warnings"])
 
 
 def test_ar_externo_nao_e_pulmao():

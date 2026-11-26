@@ -1,8 +1,11 @@
 """
 segmentation_service.py
 Serviço de segmentação pulmonar em cortes axiais de TC. Recebe a imagem,
-aplica limiarização, isola os dois maiores componentes internos (os pulmões),
+aplica limiarização, isola os componentes internos ao corpo (os pulmões),
 separa direito × esquerdo e devolve as máscaras, as métricas e o motor usado.
+
+Premissa: 
+ - Imagem na orientação padrão (frente do paciente no topo).
 
 Motores:
  - cpu: limiarização com cv2.threshold (OpenCV).
@@ -115,6 +118,25 @@ def _fill_holes(mask: np.ndarray) -> np.ndarray:
     filled[holes] = 255
     return filled
 
+def _body_mask(dark: np.ndarray) -> np.ndarray:
+    """Máscara (bool) do corpo: maior região de tecido, sem a mesa e com os pulmões dentro."""
+    # tecido = tudo que não é escuro
+    tissue = cv2.bitwise_not(dark)
+
+    # a abertura apaga estruturas finas, como a mesa do tomógrafo
+    k = max(3, int(round(BODY_OPEN_FRAC * min(dark.shape))) | 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    tissue = cv2.morphologyEx(tissue, cv2.MORPH_OPEN, kernel)
+
+    # o corpo é o maior componente de tecido
+    n, lab, st, _ = cv2.connectedComponentsWithStats(tissue, connectivity=8)
+    if n < 2:
+        return np.zeros(dark.shape, dtype=bool)
+    maior = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+    body = np.where(lab == maior, 255, 0).astype(np.uint8)
+
+    # preencher os buracos coloca os pulmões "dentro" do corpo
+    return _fill_holes(body) > 0
 
 def _dice_iou(pred: np.ndarray, gt: np.ndarray) -> Tuple[float, float]:
     """Dice e IoU entre a máscara obtida e a de referência (ambas binárias)."""
@@ -148,10 +170,13 @@ if GPU_AVAILABLE:
 
 # Constantes
 MIN_COMPONENT_AREA = 500    # área mínima para ser considerado candidato a pulmão
-MAX_LUNG_COMPONENTS = 2     # quantidade de componentes mantidos na máscara final (os dois pulmões)
+MIN_RELATIVE_AREA = 0.10    # fração mínima da maior região para ser mantida (sem limite de quantidade)
+BODY_OVERLAP_MIN = 0.90     # fração mínima da região que deve estar dentro do corpo
+BODY_OPEN_FRAC = 0.018      # abertura que remove a mesa (fração do menor lado da imagem)
+ANTERIOR_MIN_FRAC = 0.33    # regiões com centróide acima disso (fração da altura do corpo, 0 = frente) são gás, não pulmão
+AMBIGUOUS_FRAC = 0.05       # faixa em torno da linha média (fração da largura do corpo) onde o lado é incerto
 EXPECTED_SIZE = 512         # tamanho padrão de um corte de TC
 MAX_SIZE = 4096             # maior dimensão aceita
-
 
 class SegmentationService:
     @staticmethod
@@ -238,56 +263,67 @@ class SegmentationService:
             initial_mask, connectivity=8
         )
 
+        # Corpo: referência para o filtro de candidatos e para a linha média
+        body = _body_mask(initial_mask)
+        if not body.any():
+            warnings.append("Corpo não identificado: ajuste o limiar.")
+
         # Etapa 3: Filtro de candidatos
+        # pixels de cada região que estão dentro do corpo (ar externo e da mesa ficam de fora)
+        dentro = np.bincount(labels[body], minlength=num_labels)
+
+        # limites verticais do corpo (0 = frente do paciente), para descartar gás anterior
+        linhas = np.nonzero(body)[0]
+        topo = linhas.min() if linhas.size else 0
+        altura_corpo = (linhas.max() - topo + 1) if linhas.size else 1
         candidatos = []
-        # componentes que tocam a borda: ar fora do corpo
-        externos = np.zeros(num_labels, dtype=bool)
 
         # começa em 1 porque o rótulo 0 é o fundo
         for i in range(1, num_labels):
-            x = stats[i, cv2.CC_STAT_LEFT]
-            y = stats[i, cv2.CC_STAT_TOP]
-            w = stats[i, cv2.CC_STAT_WIDTH]
-            h = stats[i, cv2.CC_STAT_HEIGHT]
             area = stats[i, cv2.CC_STAT_AREA]
 
-            # regiões que tocam a borda são o fundo externo, não pulmão
-            toca_borda = (x == 0 or y == 0 or (x + w) >= width or (y + h) >= height)
-            if toca_borda:
-                externos[i] = True
+            # gás intestinal está dentro do corpo, mas na parte anterior; o pulmão fica no meio ou atrás
+            if (centroids[i, 1] - topo) / altura_corpo < ANTERIOR_MIN_FRAC:
                 continue
 
-            # mantém apenas regiões internas e grandes o bastante
-            if area > MIN_COMPONENT_AREA:
+            # mantém apenas regiões quase todas dentro do corpo e grandes o bastante
+            if dentro[i] >= BODY_OVERLAP_MIN * area and area > MIN_COMPONENT_AREA:
                 candidatos.append((area, i))
 
         # Etapa 4: Ordenação
         # maiores áreas primeiro
         candidatos.sort(key=lambda item: item[0], reverse=True)
-        selecionados = candidatos[:MAX_LUNG_COMPONENTS]
+        # descarta regiões pequenas em relação à maior, sem limitar a quantidade
+        selecionados = [c for c in candidatos if c[0] >= MIN_RELATIVE_AREA * candidatos[0][0]]
 
         # Etapa 5: Separação direito × esquerdo
         # convenção radiológica: o pulmão direito do paciente aparece no lado
-        # esquerdo da imagem. Com dois pulmões, o de centróide mais à esquerda é
-        # o direito. Com um só, compara com o centro do CORPO (tudo que não é ar
-        # externo), e não com o centro da imagem: o paciente pode estar deslocado.
-        right_mask = np.zeros_like(img, dtype=np.uint8)
-        left_mask = np.zeros_like(img, dtype=np.uint8)
+        # esquerdo da imagem. Cada região vai para o lado da linha média do corpo
+        # em que está o seu centróide; os fragmentos de cada lado são somados.
+        lado = np.zeros(num_labels, dtype=np.uint8)  # 1 = direito, 2 = esquerdo
+        ambiguo = False
 
-        if len(selecionados) == 2:
-            (_, a), (_, b) = selecionados
-            direito, esquerdo = (a, b) if centroids[a, 0] <= centroids[b, 0] else (b, a)
-            right_mask[labels == direito] = 255
-            left_mask[labels == esquerdo] = 255
-        elif len(selecionados) == 1:
-            label_idx = selecionados[0][1]
-            colunas_corpo = np.nonzero(~externos[labels])[1]
-            centro_corpo = colunas_corpo.mean() if colunas_corpo.size else width / 2
-            destino = right_mask if centroids[label_idx, 0] < centro_corpo else left_mask
-            destino[labels == label_idx] = 255
-            warnings.append("Apenas uma região pulmonar encontrada.")
-        else:
+        if selecionados:
+            colunas = np.nonzero(body)[1]
+            linha_media = colunas.mean()
+            largura_corpo = colunas.max() - colunas.min() + 1
+            for _, i in selecionados:
+                cx = centroids[i, 0]
+                lado[i] = 1 if cx < linha_media else 2
+                if abs(cx - linha_media) < AMBIGUOUS_FRAC * largura_corpo:
+                    ambiguo = True
+
+        right_mask = np.where(lado[labels] == 1, 255, 0).astype(np.uint8)
+        left_mask = np.where(lado[labels] == 2, 255, 0).astype(np.uint8)
+        n_right = int(np.count_nonzero(lado == 1))
+        n_left = int(np.count_nonzero(lado == 2))
+
+        if not selecionados:
             warnings.append("Nenhuma região pulmonar encontrada: ajuste o limiar.")
+        elif n_right == 0 or n_left == 0:
+            warnings.append("Apenas um lado encontrado.")
+        if ambiguo:
+            warnings.append("Região perto da linha média: o lado (direito/esquerdo) pode estar trocado.")
 
         # Etapa 6: Preenchimento de buracos (por pulmão)
         if fill_holes:
@@ -331,4 +367,5 @@ class SegmentationService:
             "width": int(width),
             "height": int(height),
             "warnings": warnings,
+            "regions": {"right": n_right, "left": n_left},
         }
